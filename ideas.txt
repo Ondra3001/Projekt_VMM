@@ -1,0 +1,39 @@
+WORKFLOW 
+
+-- data description -- 
+
+ID:    ID zákazníka 
+Year_Birth:  rok narození zákazníka 
+Education:   vzdělání 
+Marital_Status:  rodinný stav 
+Income:   roční příjem domácnosti 
+Kidhome:   počet děti v domácnosti 
+Teenhome:   počet teenagerů v domácnosti 
+Dt_Customer: datum registrace zákazníka u společnosti  
+Recency:   počet dní od posledního nákupu 
+Complain:   1, pokud si zákazník stěžoval v posledních 2 letech, 0 jinak
+ 
+MntWines:   částka vynaložená na víno za poslední 2 roky 
+MntFruits:   částka vynaložená na ovoce za poslední 2 roky 
+MntMeatProducts:  částka vynaložená na maso za poslední 2 roky 
+MntFishProducts:  částka vynaložená na ryby za poslední 2 roky 
+MntSweetProducts: částka vynaložená na sladkosti za poslední 2 roky 
+MntGoldProducts:  částka vynaložená na šperky za poslední 2 roky 
+
+NumDealsPurchases: počet nákupů se slevou 
+AcceptedCmp1:  1 - zákazník přijal nabídku v 1. kampani, 0 - jinak 
+AcceptedCmp2:  1 - zákazník přijal nabídku v 2. kampani, 0 - jinak 
+AcceptedCmp3:  1 - zákazník přijal nabídku v 3. kampani, 0 - jinak 
+AcceptedCmp4:  1 - zákazník přijal nabídku v 4. kampani, 0 - jinak
+AcceptedCmp5:  1 - zákazník přijal nabídku v 5. kampani, 0 - jinak 
+Response:    1 - zákazník přijal nabídku v poslední kampani, 0 - jinak 
+
+NumWebPurchases: počet nákupů uskutečněných prostřednictvím webových stránek společnosti 
+NumCatalogPurchases: počet nákupů uskutečněných prostřednictvím katalogu 
+NumStorePurchases: počet nákupů uskutečněných v prodejně 
+NumWebVisitsMonth: počet návštěv webových stránek společnosti za poslední měsíc 
+
+1) analýza a odstranění odlehlých hodnot 
+- NaN hodnoty 
+- -1 u roku narozeni 
+
