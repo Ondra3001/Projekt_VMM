@@ -141,6 +141,6 @@ cluster_summary = df.groupby('Cluster')[features].mean().round(2)
 print("\n=== Profil jednotlivých clusterů ===")
 print(cluster_summary)
 
-# === Vizualizace (volitelná) ===
+#  Vizualizace
 sns.pairplot(df, hue='Cluster', vars=['Income', 'Age', 'MntWines', 'NumStorePurchases'])
 plt.show()
