@@ -133,7 +133,7 @@ plt.title("Elbow metoda")
 plt.show()
 
 # === Finální model ===
-kmeans = KMeans(n_clusters=5, random_state=42)
+kmeans = KMeans(n_clusters=4, random_state=42)
 df['Cluster'] = kmeans.fit_predict(X_scaled)
 
 # === Shrnutí clusterů ===
@@ -142,5 +142,6 @@ print("\n=== Profil jednotlivých clusterů ===")
 print(cluster_summary)
 
 #  Vizualizace
-sns.pairplot(df, hue='Cluster', vars=['Income', 'Age', 'MntWines', 'NumStorePurchases'])
+#sns.pairplot(df, hue='Cluster', vars=['Income', 'Age', 'MntWines', 'NumStorePurchases'])
+sns.pairplot(df, hue='Cluster', vars=['Income', 'Age', 'MntGoldProds', 'MntFruits', 'MntWines', 'NumStorePurchases'])
 plt.show()
