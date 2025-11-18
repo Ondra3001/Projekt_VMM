@@ -122,7 +122,7 @@ X = df[features].copy()
 X = X.fillna(X.median())
 
 # Škálování
-from sklearn.preprocessing import StandardScaler
+
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 
@@ -162,7 +162,7 @@ from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 
 # === PCA na stejných datech, jako šla do KMeans ===
-pca = PCA(n_components=2)
+pca = PCA(n_components=3)
 pca_components = pca.fit_transform(X_scaled)
 
 df['PCA1'] = pca_components[:, 0]
@@ -188,3 +188,112 @@ plt.show()
 
 # Podíl vysvětlené variance
 print("Vysvětlená variance:", pca.explained_variance_ratio_)
+
+####################################
+
+#NOVY
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from datetime import datetime
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+
+# === Data import ===
+path = "customer_personality_Final.csv"
+df = pd.read_csv(path)
+
+# === Věk z roku narození + odstranění nereálných hodnot ===
+current_year = datetime.now().year
+df['Age'] = current_year - df['Year_Birth']
+df = df[(df['Year_Birth'] > 1900) & (df['Age'] < 120)]
+
+# === Výběr numerických proměnných pro clustering ===
+num_features = [
+    'Age', 'Income',
+    'MntWines', 'MntMeatProducts', 'MntFishProducts',
+    'MntFruits', 'MntSweetProducts', 'MntGoldProds',
+    'NumWebPurchases', 'NumCatalogPurchases', 'NumStorePurchases',
+    'NumDealsPurchases', 'NumWebVisitsMonth', 'Recency',
+    'Kidhome', 'Teenhome'  # nové numerické/binarni proměnné
+]
+
+# Odstranění outlierů u příjmu
+cutoff = df['Income'].quantile(0.99)
+df = df[df['Income'] <= cutoff]
+
+X_num = df[num_features].copy()
+
+# === Kategorické proměnné ===
+cat_features = ['Marital_Status', 'Complain']  # Complain je binární
+df_encoded = pd.get_dummies(df[cat_features], drop_first=True)
+
+# Spojení numerických a kategorických proměnných
+X_full = pd.concat([X_num, df_encoded], axis=1)
+
+# === Náhrada NaN hodnot medianem (jen pro numerické) ===
+X_full[num_features] = X_full[num_features].fillna(X_full[num_features].median())
+
+# === Škálování numerických proměnných ===
+scaler = StandardScaler()
+X_scaled_num = scaler.fit_transform(X_full[num_features])
+
+# Kategorické proměnné necháme 0/1
+X_scaled = pd.concat([
+    pd.DataFrame(X_scaled_num, columns=num_features, index=X_full.index),
+    df_encoded
+], axis=1)
+
+# === Elbow metoda pro volbu počtu clusterů ===
+inertia = []
+K_range = range(2, 10)
+
+for k in K_range:
+    km = KMeans(n_clusters=k, random_state=42)
+    km.fit(X_scaled)
+    inertia.append(km.inertia_)
+
+plt.figure(figsize=(8,5))
+plt.plot(K_range, inertia, marker='o')
+plt.xlabel("Počet clusterů")
+plt.ylabel("Inertia")
+plt.title("Elbow metoda")
+plt.show()
+
+# === Finální KMeans ===
+kmeans = KMeans(n_clusters=5, random_state=42)
+df['Cluster'] = kmeans.fit_predict(X_scaled)
+
+# === Profil clusterů ===
+cluster_summary_num = df.groupby('Cluster')[num_features].mean().round(2)
+cluster_summary_cat = df.groupby('Cluster')[cat_features].agg(lambda x: x.value_counts().index[0])
+
+print("\n=== Profil clusterů (numerické) ===")
+print(cluster_summary_num)
+print("\n=== Profil clusterů (kategorické) ===")
+print(cluster_summary_cat)
+
+# === PCA pro vizualizaci ===
+pca = PCA(n_components=2)
+pca_components = pca.fit_transform(X_scaled)
+df['PCA1'] = pca_components[:, 0]
+df['PCA2'] = pca_components[:, 1]
+
+plt.figure(figsize=(10,7))
+sns.scatterplot(
+    data=df,
+    x='PCA1', y='PCA2',
+    hue='Cluster',
+    palette='viridis',
+    s=60,
+    alpha=0.8
+)
+plt.title("PCA vizualizace – rozložení KMeans clusterů")
+plt.xlabel(f"PCA1 ({pca.explained_variance_ratio_[0]*100:.1f}% variance)")
+plt.ylabel(f"PCA2 ({pca.explained_variance_ratio_[1]*100:.1f}% variance)")
+plt.legend(title="Cluster")
+plt.tight_layout()
+plt.show()
+
+print("\nVysvětlená variance PCA:", pca.explained_variance_ratio_)
