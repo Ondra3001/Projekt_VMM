@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime
 from sklearn.preprocessing import RobustScaler
+from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 # data import 
 
@@ -100,6 +101,7 @@ print(significance_df.sort_values(by='r', ascending=False))
 
 
 # === Výběr vhodných proměnných ===
+# === Výběr vhodných proměnných ===
 features = [
     'Age', 'Income',
     'MntWines', 'MntMeatProducts', 'MntFishProducts',
@@ -108,16 +110,23 @@ features = [
     'NumDealsPurchases', 'NumWebVisitsMonth', 'Recency'
 ]
 
+#  Odstranění outlierů (musí být dřív, než vytvoříš X)
+cutoff = df['Income'].quantile(0.99)
+print("Cutoff:", cutoff)
+df = df[df['Income'] <= cutoff]
+
+# Teď teprve vytvořím X (už bez outlierů)
 X = df[features].copy()
 
-# Nany nahrazny medianem, nemelo by to u techto features vadit asi
+# Náhrada NaN
 X = X.fillna(X.median())
 
-# Robustní škálování (lepší pro outliery - at se muze pouzit clustering)
-scaler = RobustScaler()
+# Škálování
+from sklearn.preprocessing import StandardScaler
+scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 
-# === Elbow metoda -- furt si myslim ze 5 je fajn
+# Elbow metoda
 inertia = []
 K_range = range(2, 10)
 
@@ -132,16 +141,50 @@ plt.ylabel("Inertia")
 plt.title("Elbow metoda")
 plt.show()
 
-# === Finální model ===
-kmeans = KMeans(n_clusters=4, random_state=42)
+# Finální KMeans
+kmeans = KMeans(n_clusters=5, random_state=42)
 df['Cluster'] = kmeans.fit_predict(X_scaled)
 
-# === Shrnutí clusterů ===
+#  Výpis clusterů
 cluster_summary = df.groupby('Cluster')[features].mean().round(2)
 print("\n=== Profil jednotlivých clusterů ===")
 print(cluster_summary)
 
-#  Vizualizace
-#sns.pairplot(df, hue='Cluster', vars=['Income', 'Age', 'MntWines', 'NumStorePurchases'])
-sns.pairplot(df, hue='Cluster', vars=['Income', 'Age', 'MntGoldProds', 'MntFruits', 'MntWines', 'NumStorePurchases'])
+# Pairplot
+sns.pairplot(df, hue='Cluster',
+             vars=['Income', 'Age', 'MntFruits', 'MntWines',
+                   'NumStorePurchases', 'NumWebPurchases',
+                   'NumWebVisitsMonth'])
 plt.show()
+
+#####
+from sklearn.decomposition import PCA
+import matplotlib.pyplot as plt
+
+# === PCA na stejných datech, jako šla do KMeans ===
+pca = PCA(n_components=2)
+pca_components = pca.fit_transform(X_scaled)
+
+df['PCA1'] = pca_components[:, 0]
+df['PCA2'] = pca_components[:, 1]
+
+# === PCA scatterplot s barvami podle clusterů ===
+plt.figure(figsize=(10, 7))
+sns.scatterplot(
+    data=df,
+    x='PCA1', y='PCA2',
+    hue='Cluster',
+    palette='viridis',
+    s=60,
+    alpha=0.85
+)
+
+plt.title("PCA vizualizace – rozložení KMeans clusterů")
+plt.xlabel(f"PCA1 ({pca.explained_variance_ratio_[0]*100:.1f}% variance)")
+plt.ylabel(f"PCA2 ({pca.explained_variance_ratio_[1]*100:.1f}% variance)")
+plt.legend(title="Cluster")
+plt.tight_layout()
+plt.show()
+
+# Podíl vysvětlené variance
+print("Vysvětlená variance:", pca.explained_variance_ratio_)
