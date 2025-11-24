@@ -19,8 +19,8 @@ df = pd.read_csv(path)
 
 #prehled numerickych promennych
 
-num_cols = ['Income', 'Year_Birth', 'Age', 'MntWines', 'MntMeatProducts',
-            'MntFruits', 'MntSweetProducts', 'MntGoldProds', 'Recency']
+#num_cols = ['Income', 'Year_Birth', 'Age', 'MntWines', 'MntMeatProducts',
+  #          'MntFruits', 'MntSweetProducts', 'MntGoldProds', 'Recency']
 
 #plt.figure(figsize=(15, 10))
 #for i, col in enumerate(num_cols, 1):
@@ -37,263 +37,174 @@ df['Age'] = current_year - df['Year_Birth']
 # odstranění nereálných roků narození nebo extrémně starých zákazníků
 df = df[(df['Year_Birth'] > 1900) & (df['Age'] < 120)]
 
-df['Age'].describe()
+# --- CUSTOMER SINCE (v letech) ---
+df["Dt_Customer"] = pd.to_datetime(df["Dt_Customer"], dayfirst=True)
 
-plt.figure(figsize=(15, 10))
-for i, col in enumerate(num_cols, 1):
-    plt.subplot(3, 3, i)
-    sns.histplot(df[col], kde=True, bins=30)
-    plt.title(col)
-plt.tight_layout()
-plt.show()
+today = pd.to_datetime(datetime.now())
 
-df.info()
-df.describe(include='all')
-
-# === Korelační analýza ===
-from scipy.stats import pearsonr
-
-# vyber jen numerické sloupce
-numeric_df = df.select_dtypes(include=['float64', 'int64'])
-
-# korelační matice
-corr = numeric_df.corr()
-
-plt.figure(figsize=(12, 8))
-sns.heatmap(corr, cmap='coolwarm', center=0, annot=False)
-plt.title('Korelační matice numerických proměnných')
-plt.show()
-
-# textový přehled silných korelací
-corr_unstacked = corr.unstack().sort_values(ascending=False)
-strong_corr = corr_unstacked[(corr_unstacked < 1) & (corr_unstacked > 0.5)]
-print("Silnější korelace (r > 0.5):")
-print(strong_corr)
-
-# === Test statistické významnosti (p-hodnoty) ===
-results = []
-for (var1, var2) in strong_corr.index:
-    # vyber jen řádky bez NaN
-    data = df[[var1, var2]].dropna()
-    if len(data) > 2:
-        r, p = pearsonr(data[var1], data[var2])
-        results.append((var1, var2, r, p))
-
-significance_df = pd.DataFrame(results, columns=['Variable 1', 'Variable 2', 'r', 'p-value'])
-significance_df['Significant (p<0.05)'] = significance_df['p-value'] < 0.05
-
-print("\nTest statistické významnosti pro silnější korelace:")
-print(significance_df.sort_values(by='r', ascending=False))
-
-#otulier v income, nevim jestli ho nechat?? 160000 prijem- muze byt bohac
-#plt.figure(figsize=(8,5))
-#sns.boxplot(x=df['Income'], color='skyblue')
-#plt.title('Boxplot příjmu (Income)')
-#plt.show()
-
-#Nans zmena na unknown - nechci tam davat median?
-#df['Education'] = df['Education'].fillna('Unknown')
-#df['Marital_Status'] = df['Marital_Status'].fillna('Unknown')
+df["Customer_since_years"] = (today - df["Dt_Customer"]).dt.days / 365.25
 
 
-###########################################################################
+df["Income"] = df["Income"].fillna(df["Income"].median())
 
 
 
-# === Výběr vhodných proměnných ===
-# === Výběr vhodných proměnných ===
-features = [
-    'Age', 'Income',
-    'MntWines', 'MntMeatProducts', 'MntFishProducts',
-    'MntFruits', 'MntSweetProducts', 'MntGoldProds',
-    'NumWebPurchases', 'NumCatalogPurchases', 'NumStorePurchases',
-    'NumDealsPurchases', 'NumWebVisitsMonth', 'Recency'
+# prohledani
+print(df['Marital_Status'].unique())
+df["Marital_Status"] = df["Marital_Status"].replace({
+    "Alone": "Single"
+})
+# educations jsou 'Graduation' 'PhD' 'Master' 'Basic' '2n Cycle'.. prevod na ordinalni
+print(df['Education'].unique())
+
+education_map = {
+    "Basic": 1,
+    "2n Cycle": 2,
+    "Graduation": 3,
+    "Master": 4,
+    "PhD": 5
+}
+
+df["Education_Ordinal"] = df["Education"].map(education_map)
+df["Education_Ordinal"] = df["Education_Ordinal"].fillna(0)   # UNKNOWN
+# ============================================================
+#   8) VÝBĚR FEATURE SETU PRO CLUSTERING
+# ============================================================
+
+
+
+# --- numerické nákupní chování ---
+purchase_cols = [
+    "MntWines", "MntMeatProducts", "MntFishProducts", "MntFruits",
+    "MntSweetProducts", "MntGoldProds",
+    "NumWebPurchases", "NumCatalogPurchases", "NumStorePurchases",
+    "NumDealsPurchases", "NumWebVisitsMonth", "Recency"
 ]
 
-#  Odstranění outlierů (musí být dřív, než vytvoříš X)
-cutoff = df['Income'].quantile(0.99)
-print("Cutoff:", cutoff)
-df = df[df['Income'] <= cutoff]
+# demografie ---
+demo_cols = [
+    "Age", "Income", "Kidhome", "Teenhome", "Customer_since_years"
+]
 
-# Teď teprve vytvořím X (už bez outlierů)
-X = df[features].copy()
+# --- kampaně ---
+campaign_cols = [
+    "AcceptedCmp1", "AcceptedCmp2", "AcceptedCmp3",
+    "AcceptedCmp4", "AcceptedCmp5", "Response"
+]
 
-# Náhrada NaN
+# --- kategorické proměnné (zaencodingujeme), Education zkousim dat jako ordinal ---
+cat_cols = ["Marital_Status"]
+
+
+
+
+#   9) ONE-HOT ENCODING pro marital
+
+
+df_encoded = pd.get_dummies(df, columns=cat_cols, drop_first=True)
+
+df_encoded['TotalFood'] = (
+    df_encoded['MntMeatProducts']
+    + df_encoded['MntFishProducts']
+    + df_encoded['MntFruits']
+    + df_encoded['MntSweetProducts']
+)
+# kompletní feature set
+features = (
+    purchase_cols
+    + demo_cols
+    + campaign_cols
+    + ["Education_Ordinal"]    #  ordinal education
+    + [col for col in df_encoded.columns if col.startswith("Marital_")]
+)
+
+
+X = df_encoded[features].copy()
+
+# ============================================================
+#  10) OŠETŘENÍ OUTLIERŮ – cutoff příjmu
+# ============================================================
+
+cutoff = df_encoded["Income"].quantile(0.99)
+df_encoded = df_encoded[df_encoded["Income"] <= cutoff]
+X = df_encoded[features]
+
+# ============================================================
+#  11) DOPLNĚNÍ NaN + STANDARD SCALING
+# ============================================================
+
 X = X.fillna(X.median())
-
-# Škálování
 
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 
-# Elbow metoda
-inertia = []
-K_range = range(2, 10)
 
-for k in K_range:
-    km = KMeans(n_clusters=k, random_state=42)
-    km.fit(X_scaled)
-    inertia.append(km.inertia_)
+# ============================================================
+#  12) PCA – snížení dimenzionality
+# ============================================================
 
-plt.plot(K_range, inertia, marker='o')
-plt.xlabel("Počet clusterů")
-plt.ylabel("Inertia")
-plt.title("Elbow metoda")
+from sklearn.decomposition import PCA
+
+# vezmeme 5 hlavních komponent, které vysvětlí cca 60–70 % variance
+pca = PCA(n_components=8)
+X_pca = pca.fit_transform(X_scaled)
+
+print("Explained variance per component:", pca.explained_variance_ratio_)
+print("Cumulative:", pca.explained_variance_ratio_.cumsum())
+
+# vytvoříme DataFrame, aby se s tím lépe pracovalo
+pca_df = pd.DataFrame(
+    X_pca,
+    columns=[f"PC{i}" for i in range(1, 9)]
+)
+pca_df["Cluster_ID"] = df_encoded.index  # pro pozdější spojení
+
+
+# ============================================================
+#  13) Clusterování na PCA datech
+# ============================================================
+
+from sklearn.cluster import KMeans
+
+k_final = 4  # doporučuji začít s 3–5, díky PCA už to bývá stabilnější
+kmeans = KMeans(n_clusters=k_final, random_state=42)
+clusters = kmeans.fit_predict(pca_df.iloc[:, :8])
+
+pca_df["Cluster"] = clusters
+
+# přidáme clustery zpět do původního df_encoded
+df_encoded["Cluster"] = clusters
+
+
+# ============================================================
+#  14) Silhouette score
+# ============================================================
+
+from sklearn.metrics import silhouette_score
+
+sil = silhouette_score(X_pca, clusters)
+print("Silhouette score (PCA-based):", sil)
+
+
+# ============================================================
+#  15) Vizualizace PC1 vs PC2
+# ============================================================
+
+plt.figure(figsize=(8, 6))
+sns.scatterplot(
+    x=pca_df["PC1"], y=pca_df["PC2"],
+    hue=pca_df["Cluster"], palette="tab10"
+)
+plt.title("PCA clustering – PC1 vs PC2")
 plt.show()
 
-# Finální KMeans
-kmeans = KMeans(n_clusters=5, random_state=42)
-df['Cluster'] = kmeans.fit_predict(X_scaled)
 
-#  Výpis clusterů
-cluster_summary = df.groupby('Cluster')[features].mean().round(2)
-print("\n=== Profil jednotlivých clusterů ===")
+# ============================================================
+#  16) Profil clusterů v původních features
+# ============================================================
+
+cluster_summary = df_encoded.groupby("Cluster")[features].mean().round(2)
+print("\n===== PROFILY CLUSTERŮ =====")
 print(cluster_summary)
 
-# Pairplot
-sns.pairplot(df, hue='Cluster',
-             vars=['Income', 'Age', 'MntFruits', 'MntWines',
-                   'NumStorePurchases', 'NumWebPurchases',
-                   'NumWebVisitsMonth'])
-plt.show()
-
-#####
-from sklearn.decomposition import PCA
-import matplotlib.pyplot as plt
-
-# === PCA na stejných datech, jako šla do KMeans ===
-pca = PCA(n_components=3)
-pca_components = pca.fit_transform(X_scaled)
-
-df['PCA1'] = pca_components[:, 0]
-df['PCA2'] = pca_components[:, 1]
-
-# === PCA scatterplot s barvami podle clusterů ===
-plt.figure(figsize=(10, 7))
-sns.scatterplot(
-    data=df,
-    x='PCA1', y='PCA2',
-    hue='Cluster',
-    palette='viridis',
-    s=60,
-    alpha=0.85
-)
-
-plt.title("PCA vizualizace – rozložení KMeans clusterů")
-plt.xlabel(f"PCA1 ({pca.explained_variance_ratio_[0]*100:.1f}% variance)")
-plt.ylabel(f"PCA2 ({pca.explained_variance_ratio_[1]*100:.1f}% variance)")
-plt.legend(title="Cluster")
-plt.tight_layout()
-plt.show()
-
-# Podíl vysvětlené variance
-print("Vysvětlená variance:", pca.explained_variance_ratio_)
-
-####################################
-
-#NOVY
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-from datetime import datetime
-from sklearn.preprocessing import StandardScaler
-from sklearn.cluster import KMeans
-from sklearn.decomposition import PCA
-
-# === Data import ===
-path = "customer_personality_Final.csv"
-df = pd.read_csv(path)
-
-# === Věk z roku narození + odstranění nereálných hodnot ===
-current_year = datetime.now().year
-df['Age'] = current_year - df['Year_Birth']
-df = df[(df['Year_Birth'] > 1900) & (df['Age'] < 120)]
-
-# === Výběr numerických proměnných pro clustering ===
-num_features = [
-    'Age', 'Income',
-    'MntWines', 'MntMeatProducts', 'MntFishProducts',
-    'MntFruits', 'MntSweetProducts', 'MntGoldProds',
-    'NumWebPurchases', 'NumCatalogPurchases', 'NumStorePurchases',
-    'NumDealsPurchases', 'NumWebVisitsMonth', 'Recency',
-    'Kidhome', 'Teenhome'  # nové numerické/binarni proměnné
-]
-
-# Odstranění outlierů u příjmu
-cutoff = df['Income'].quantile(0.99)
-df = df[df['Income'] <= cutoff]
-
-X_num = df[num_features].copy()
-
-# === Kategorické proměnné ===
-cat_features = ['Marital_Status', 'Complain']  # Complain je binární
-df_encoded = pd.get_dummies(df[cat_features], drop_first=True)
-
-# Spojení numerických a kategorických proměnných
-X_full = pd.concat([X_num, df_encoded], axis=1)
-
-# === Náhrada NaN hodnot medianem (jen pro numerické) ===
-X_full[num_features] = X_full[num_features].fillna(X_full[num_features].median())
-
-# === Škálování numerických proměnných ===
-scaler = StandardScaler()
-X_scaled_num = scaler.fit_transform(X_full[num_features])
-
-# Kategorické proměnné necháme 0/1
-X_scaled = pd.concat([
-    pd.DataFrame(X_scaled_num, columns=num_features, index=X_full.index),
-    df_encoded
-], axis=1)
-
-# === Elbow metoda pro volbu počtu clusterů ===
-inertia = []
-K_range = range(2, 10)
-
-for k in K_range:
-    km = KMeans(n_clusters=k, random_state=42)
-    km.fit(X_scaled)
-    inertia.append(km.inertia_)
-
-plt.figure(figsize=(8,5))
-plt.plot(K_range, inertia, marker='o')
-plt.xlabel("Počet clusterů")
-plt.ylabel("Inertia")
-plt.title("Elbow metoda")
-plt.show()
-
-# === Finální KMeans ===
-kmeans = KMeans(n_clusters=5, random_state=42)
-df['Cluster'] = kmeans.fit_predict(X_scaled)
-
-# === Profil clusterů ===
-cluster_summary_num = df.groupby('Cluster')[num_features].mean().round(2)
-cluster_summary_cat = df.groupby('Cluster')[cat_features].agg(lambda x: x.value_counts().index[0])
-
-print("\n=== Profil clusterů (numerické) ===")
-print(cluster_summary_num)
-print("\n=== Profil clusterů (kategorické) ===")
-print(cluster_summary_cat)
-
-# === PCA pro vizualizaci ===
-pca = PCA(n_components=2)
-pca_components = pca.fit_transform(X_scaled)
-df['PCA1'] = pca_components[:, 0]
-df['PCA2'] = pca_components[:, 1]
-
-plt.figure(figsize=(10,7))
-sns.scatterplot(
-    data=df,
-    x='PCA1', y='PCA2',
-    hue='Cluster',
-    palette='viridis',
-    s=60,
-    alpha=0.8
-)
-plt.title("PCA vizualizace – rozložení KMeans clusterů")
-plt.xlabel(f"PCA1 ({pca.explained_variance_ratio_[0]*100:.1f}% variance)")
-plt.ylabel(f"PCA2 ({pca.explained_variance_ratio_[1]*100:.1f}% variance)")
-plt.legend(title="Cluster")
-plt.tight_layout()
-plt.show()
-
-print("\nVysvětlená variance PCA:", pca.explained_variance_ratio_)
+#
