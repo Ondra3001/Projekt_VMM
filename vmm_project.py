@@ -140,71 +140,106 @@ X_scaled = scaler.fit_transform(X)
 
 
 # ============================================================
-#  12) PCA – snížení dimenzionality
+# 12) PCA pouze na NÁKUPNÍ chování
 # ============================================================
 
 from sklearn.decomposition import PCA
+from sklearn.mixture import GaussianMixture
+from sklearn.metrics import silhouette_score
 
-# vezmeme 5 hlavních komponent, které vysvětlí cca 60–70 % variance
-pca = PCA(n_components=8)
-X_pca = pca.fit_transform(X_scaled)
+# --- blok dat pro PCA (výdaje + návštěvy + recency) ---
+pca_cols = [
+    "MntWines", "MntMeatProducts", "MntFishProducts",
+    "MntFruits", "MntSweetProducts", "MntGoldProds",
+    "NumWebPurchases", "NumCatalogPurchases", "NumStorePurchases",
+    "NumWebVisitsMonth", "Recency"
+]
 
-print("Explained variance per component:", pca.explained_variance_ratio_)
+X_pca_input = X[pca_cols]
+
+# Robust scaler místo StandardScaler
+from sklearn.preprocessing import RobustScaler
+scaler_pca = RobustScaler()
+X_pca_scaled = scaler_pca.fit_transform(X_pca_input)
+
+# PCA udržující 80% variance
+pca = PCA(n_components=0.80)
+X_pca = pca.fit_transform(X_pca_scaled)
+
+print("\n--- PCA variances ---")
+print("Explained variance:", pca.explained_variance_ratio_)
 print("Cumulative:", pca.explained_variance_ratio_.cumsum())
 
-# vytvoříme DataFrame, aby se s tím lépe pracovalo
-pca_df = pd.DataFrame(
-    X_pca,
-    columns=[f"PC{i}" for i in range(1, 9)]
+# vytvoříme dataframe PC komponent
+pca_feature_names = [f"PC{i}" for i in range(1, X_pca.shape[1] + 1)]
+pca_df = pd.DataFrame(X_pca, columns=pca_feature_names)
+
+
+# ============================================================
+# 13) Spojení PCA + DEMOGRAFIE (nejlepší praxe)
+# ============================================================
+
+demographic_cols = [
+    "Age", "Income", "Kidhome", "Teenhome", "Customer_since_years",
+    "Education_Ordinal"
+]
+
+X_final = pd.concat(
+    [
+        pca_df.reset_index(drop=True),
+        X[demographic_cols].reset_index(drop=True)
+    ],
+    axis=1
 )
-pca_df["Cluster_ID"] = df_encoded.index  # pro pozdější spojení
+
+print("\nFinal shape for clustering:", X_final.shape)
 
 
 # ============================================================
-#  13) Clusterování na PCA datech
+# 14) Gaussian Mixture Model (lepší než KMeans)
 # ============================================================
 
-from sklearn.cluster import KMeans
+gmm = GaussianMixture(
+    n_components=4,
+    covariance_type="full",
+    random_state=42
+)
 
-k_final = 4  # doporučuji začít s 3–5, díky PCA už to bývá stabilnější
-kmeans = KMeans(n_clusters=k_final, random_state=42)
-clusters = kmeans.fit_predict(pca_df.iloc[:, :8])
-
-pca_df["Cluster"] = clusters
-
-# přidáme clustery zpět do původního df_encoded
+clusters = gmm.fit_predict(X_final)
+X_final["Cluster"] = clusters
 df_encoded["Cluster"] = clusters
 
 
 # ============================================================
-#  14) Silhouette score
+# 15) Silhouette score
 # ============================================================
 
-from sklearn.metrics import silhouette_score
-
-sil = silhouette_score(X_pca, clusters)
-print("Silhouette score (PCA-based):", sil)
+sil = silhouette_score(X_final.drop("Cluster", axis=1), clusters)
+print("\nSilhouette score:", sil)
 
 
 # ============================================================
-#  15) Vizualizace PC1 vs PC2
+# 16) Vizualizace PC1–PC2
 # ============================================================
 
 plt.figure(figsize=(8, 6))
 sns.scatterplot(
-    x=pca_df["PC1"], y=pca_df["PC2"],
-    hue=pca_df["Cluster"], palette="tab10"
+    x=pca_df["PC1"],
+    y=pca_df["PC2"],
+    hue=clusters,
+    palette="tab10"
 )
-plt.title("PCA clustering – PC1 vs PC2")
+plt.title("GMM clustering – PCA space")
 plt.show()
 
 
 # ============================================================
-#  16) Profil clusterů v původních features
+# 17) PROFILY CLUSTERŮ
 # ============================================================
 
-cluster_summary = df_encoded.groupby("Cluster")[features].mean().round(2)
+cluster_summary = df_encoded.groupby("Cluster")[
+    pca_cols + demographic_cols
+].mean().round(2)
+
 print("\n===== PROFILY CLUSTERŮ =====")
 print(cluster_summary)
-
-#

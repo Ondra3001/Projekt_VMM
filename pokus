@@ -1,0 +1,77 @@
+# Quick experiment: apply log1p transform to skewed spending features and re-run PCA (2D) + GMM to compare silhouette.
+import numpy as np
+from sklearn.preprocessing import RobustScaler
+from sklearn.decomposition import PCA
+from sklearn.mixture import GaussianMixture
+from sklearn.metrics import silhouette_score
+
+# copy df from previous run if exists by reloading
+df = pd.read_csv(PATH)
+current_year = datetime.now().year
+df['Age'] = current_year - df['Year_Birth']
+df = df[(df['Year_Birth'] > 1900) & (df['Age'] < 120)].copy()
+df["Dt_Customer"] = pd.to_datetime(df["Dt_Customer"], dayfirst=True, errors='coerce')
+df["Customer_since_years"] = (today - df["Dt_Customer"]).dt.days / 365.25
+df["Income"] = df["Income"].fillna(df["Income"].median())
+df["Education_Ordinal"] = df["Education"].map(education_map).fillna(0)
+df["Marital_Status"] = df["Marital_Status"].replace({"Alone":"Single"})
+df["Marital_Status"] = df["Marital_Status"].fillna("Unknown")
+
+# rebuild engineered features
+df["TotalFood"] = df["MntMeatProducts"].fillna(0) + df["MntFishProducts"].fillna(0) + df["MntFruits"].fillna(0) + df["MntSweetProducts"].fillna(0)
+df["TotalLuxury"] = df["MntWines"].fillna(0) + df["MntGoldProds"].fillna(0)
+df["TotalSpending"] = df["TotalFood"] + df["TotalLuxury"]
+df["TotalPurchases"] = df["NumWebPurchases"].fillna(0) + df["NumCatalogPurchases"].fillna(0) + df["NumStorePurchases"].fillna(0) + df["NumDealsPurchases"].fillna(0)
+df["AvgPurchaseValue"] = df["TotalSpending"] / df["TotalPurchases"].replace(0, np.nan)
+df["AvgPurchaseValue"] = df["AvgPurchaseValue"].fillna(0)
+df["WebRatio"] = df["NumWebPurchases"] / df["TotalPurchases"].replace(0, np.nan); df["WebRatio"]=df["WebRatio"].fillna(0)
+df["CatalogRatio"] = df["NumCatalogPurchases"] / df["TotalPurchases"].replace(0, np.nan); df["CatalogRatio"]=df["CatalogRatio"].fillna(0)
+df["StoreRatio"] = df["NumStorePurchases"] / df["TotalPurchases"].replace(0, np.nan); df["StoreRatio"]=df["StoreRatio"].fillna(0)
+df["WineShare"] = df["MntWines"] / df["TotalSpending"].replace(0, np.nan); df["WineShare"]=df["WineShare"].fillna(0)
+df["GoldShare"] = df["MntGoldProds"] / df["TotalSpending"].replace(0, np.nan); df["GoldShare"]=df["GoldShare"].fillna(0)
+df["KidsTotal"] = df["Kidhome"].fillna(0) + df["Teenhome"].fillna(0)
+df["IsFamily"] = (df["KidsTotal"] > 0).astype(int)
+
+engineered = ["TotalFood","TotalLuxury","TotalSpending","TotalPurchases","AvgPurchaseValue",
+              "WebRatio","CatalogRatio","StoreRatio","WineShare","GoldShare","KidsTotal","IsFamily"]
+demo = ["Age","Income","Customer_since_years","Education_Ordinal"]
+campaigns = [c for c in ["AcceptedCmp1","AcceptedCmp2","AcceptedCmp3","AcceptedCmp4","AcceptedCmp5","Response"] if c in df.columns]
+features = engineered + demo + campaigns
+
+# Apply log1p to skewed monetary/count features
+df_log = df.copy()
+for col in ["TotalFood","TotalLuxury","TotalSpending","TotalPurchases","AvgPurchaseValue","Income"]:
+    df_log[col] = np.log1p(df_log[col])
+
+X_log = df_log[features].fillna(0)
+X_scaled_log = RobustScaler().fit_transform(X_log)
+
+# PCA 2D + GMM (k by BIC)
+pca2 = PCA(n_components=2, random_state=42)
+X_pca2 = pca2.fit_transform(X_scaled_log)
+
+bic_scores = []
+gmm_models = {}
+ks = list(range(2,7))
+for k in ks:
+    gm = GaussianMixture(n_components=k, covariance_type="full", random_state=42)
+    gm.fit(X_pca2)
+    bic_scores.append(gm.bic(X_pca2))
+    gmm_models[k] = gm
+best_k = ks[np.argmin(bic_scores)]
+best_gm = gmm_models[best_k]
+labels = best_gm.predict(X_pca2)
+sil_log = silhouette_score(X_pca2, labels) if len(np.unique(labels))>1 else None
+
+print("Best k by BIC on PCA2 (log transformed):", best_k)
+print("Silhouette (PCA2 + GMM on log-features):", sil_log)
+
+# Compare to previous silhouette (we had ~0.10). Show scatter
+plt.figure(figsize=(8,5))
+for lab in np.unique(labels):
+    mask = labels==lab
+    plt.scatter(X_pca2[mask,0], X_pca2[mask,1], label=str(lab), s=25)
+plt.legend(title="Cluster")
+plt.xlabel("PC1"); plt.ylabel("PC2")
+plt.title("PCA2 on log-transformed features + GMM clusters")
+plt.show()
