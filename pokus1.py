@@ -56,7 +56,7 @@ pca2 = PCA(n_components=2, random_state=42)
 X_pca2 = pca2.fit_transform(X_scaled_log)
 
 # best GMM from previous experiment: pick k=3 # dala jsem 4
-gmm = GaussianMixture(n_components=2, covariance_type="full", random_state=42)
+gmm = GaussianMixture(n_components=4, covariance_type="full", random_state=42)
 labels = gmm.fit_predict(X_pca2)
 df["Cluster_final"] = labels
 
