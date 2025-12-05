@@ -27,12 +27,12 @@ from statsmodels.stats.multicomp import pairwise_tukeyhsd
 from sklearn.metrics import silhouette_score
 
 # ----------------------------
-# 1) Načtení a feature eng.
+# 1) Načtení + predzpracovani
 # ----------------------------
 path = "customer_personality_Final.csv"
 df = pd.read_csv(path)
 
-# základní cleaning
+# cleaning
 current_year = datetime.now().year
 df["Age"] = current_year - df["Year_Birth"]
 df = df[(df["Year_Birth"] > 1900) & (df["Age"] < 120)].copy()
@@ -41,8 +41,22 @@ df["Customer_since_years"] = (datetime.now() - df["Dt_Customer"]).dt.days / 365.
 df["Income"] = df["Income"].fillna(df["Income"].median())
 
 education_map = {"Basic":1, "2n Cycle":2, "Graduation":3, "Master":4, "PhD":5}
-df["Education_Ordinal"] = df["Education"].map(education_map).fillna(0)
+df["Education_Ordinal"] = df["Education"].map(education_map)
+median_edu = df["Education_Ordinal"].median()
+df["Education_Ordinal"] = df["Education_Ordinal"].fillna(median_edu)
+
+
 df["Marital_Status"] = df["Marital_Status"].replace({"Alone":"Single"}).fillna("Unknown")
+marital_map = {
+    "Single": 0,
+    "Together": 1,
+    "Married": 2,
+    "Divorced": 3,
+    "Widow": 4,
+    "Unknown": -1
+}
+
+df["Marital_Status_Ordinal"] = df["Marital_Status"].map(marital_map)
 
 # vypocitane features
 df["TotalFood"] = df[["MntMeatProducts","MntFishProducts","MntFruits","MntSweetProducts"]].sum(axis=1)
@@ -56,7 +70,7 @@ df["GoldShare"] = (df["MntGoldProds"] / df["TotalSpending"].replace(0, np.nan)).
 df["KidsTotal"] = df["Kidhome"].fillna(0) + df["Teenhome"].fillna(0)
 df["IsFamily"] = (df["KidsTotal"] > 0).astype(int)
 
-# krátká sanity kontrola
+#  kontrola
 print("Rows:", len(df))
 print("Columns (sample):", df.columns[:12].tolist())
 
@@ -72,7 +86,7 @@ profile_cols = [
 plt.figure(figsize=(10,8))
 corr = df[profile_cols].corr()
 sns.heatmap(corr, annot=True, cmap="coolwarm", center=0)
-plt.title("Correlation matrix (profile features)")
+plt.title("Correlation matrix")
 plt.show()
 
 
@@ -96,7 +110,7 @@ X = df[X_cols].fillna(0)
 scaler = RobustScaler()
 X_scaled = scaler.fit_transform(X)
 
-# PCA (už jen pro indikaci variance)
+# PCA (pro indikaci variance)
 pca = PCA(n_components=6, random_state=42)
 pca_comp = pca.fit_transform(X_scaled)
 print("\nExplained variance (first 6 PCs):", np.round(pca.explained_variance_ratio_,3))
@@ -106,20 +120,198 @@ plt.xlabel("n components")
 plt.ylabel("cumulative explained variance")
 plt.grid(True)
 plt.show()
+# POZNAMKY: větší část variance je vysvětlena prvními 3–5 komponentami.
+#struktura dat má relativně nízkou dimenzionalitu a většina informací je obsažena v několika hlavních faktorech.
+# PCA tedy vhodně komprimuje data a potvrzuje, že je možné použít metody jako UMAP nebo clustering bez výrazné ztráty informace.
+#--> data NEJSOU dobre  linearne separovatelna, PCA selze
 
 # ----------------------------
-# 4) UMAP embedding
+# 4) UMAP..............mozna jde pouzit tSNE ale UMAP je lepsi
 # ----------------------------
 umap_model = UMAP(n_components=2, random_state=42, n_neighbors=30, min_dist=0.1)
 X_umap = umap_model.fit_transform(X_scaled)
+
+
+
+# ---------------------------------------------
+#  UMAP INTERPRETACE PODLE DEMOGRAFIE / CHOVÁNÍ
+# ---------------------------------------------
+
+interp_features = [
+    "Income",
+    "TotalLuxury",
+    "Marital_Status_Ordinal",
+    #"Age",
+    "WineShare",
+    #"WebRatio",
+    "KidsTotal",
+    "Education_Ordinal" # dva male clustery jsou oddeleni lidi s nizkou education (pod 3: takze pod graduation.. )
+]
+#webratio + age nic moc novlivnuje,
+
+fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+axes = axes.flatten()
+
+for i, feat in enumerate(interp_features):
+    ax = axes[i]
+    sc = ax.scatter(
+        X_umap[:, 0], X_umap[:, 1],
+        c=df[feat], cmap="viridis", s=25
+    )
+    ax.set_title(f"{feat} (větší = světlejší)")
+    ax.set_xlabel("UMAP-1")
+    ax.set_ylabel("UMAP-2")
+    plt.colorbar(sc, ax=ax)
+
+plt.suptitle("UMAP – Interpretační mapa zákazníků dle demografie a nákupního chování")
+plt.tight_layout()
+plt.show()
 
 plt.figure(figsize=(8,6))
 sns.scatterplot(x=X_umap[:,0], y=X_umap[:,1], s=30)
 plt.title("UMAP (unlabeled) — raw view")
 plt.show()
 
+response_corr = df[[
+    "AcceptedCmp1","AcceptedCmp2","AcceptedCmp3","AcceptedCmp4","AcceptedCmp5","Response",
+    "Income","TotalSpending","AvgPurchaseValue","WineShare","WebRatio","Age", "Education_Ordinal", "KidsTotal"
+]].corr()
+
+sns.heatmap(response_corr, annot=False, cmap="coolwarm", center=0)
+plt.title("Korelace kampaní a zákaznických charakteristik")
+plt.show()
+
+# ============================================
+# UMAP vizualizace kampaní v jednom obrázku
+# ============================================
+
+campaign_cols = ["AcceptedCmp1","AcceptedCmp2","AcceptedCmp3",
+                 "AcceptedCmp4","AcceptedCmp5","Response"]
+
+# jen sloupce, které v DF existují
+campaign_cols = [c for c in campaign_cols if c in df.columns]
+
+fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+axes = axes.flatten()
+
+for i, cmp in enumerate(campaign_cols):
+    ax = axes[i]
+    sns.scatterplot(
+        x=X_umap[:,0],
+        y=X_umap[:,1],
+        hue=df[cmp],
+        palette="coolwarm",
+        s=35,
+        ax=ax,
+        legend=False
+    )
+    ax.set_title(f"{cmp} (1 = accepted)")
+    ax.set_xlabel("UMAP-1")
+    ax.set_ylabel("UMAP-2")
+
+# případný prázdný subplot
+for j in range(len(campaign_cols), len(axes)):
+    axes[j].axis("off")
+
+plt.suptitle("UMAP – Vizualizace reakcí na kampaně", fontsize=16)
+plt.tight_layout()
+plt.show()
+
+
+
+# ============================================
+# Vizualizace kampaní v UMAP prostoru (bez clusterování)
+# ============================================
+
+campaign_cols = [c for c in ["AcceptedCmp1","AcceptedCmp2","AcceptedCmp3","AcceptedCmp4","AcceptedCmp5"] if c in df.columns]
+
+# 1) RESPONSE (alespoň jedna kampaně)
+plt.figure(figsize=(8,6))
+sns.scatterplot(
+    x=X_umap[:,0], y=X_umap[:,1],
+    hue=df["Response"], palette="coolwarm", s=40
+)
+plt.title("UMAP – Response (0/1)")
+plt.legend(title="Response")
+plt.show()
+
+# 2) Jednotlivé kampaně
+for cmp in campaign_cols:
+    plt.figure(figsize=(8,6))
+    sns.scatterplot(
+        x=X_umap[:,0], y=X_umap[:,1],
+        hue=df[cmp],
+        palette="coolwarm", s=40
+    )
+    plt.title(f"UMAP – {cmp} (0/1)")
+    plt.legend(title=cmp)
+    plt.show()
+
+# ==========================================
+# STATISTICKÉ TESTY PRO KAMPANĚ
+# ==========================================
+
+from scipy.stats import mannwhitneyu
+
+# proměnné které budeme testovat
+test_features = [
+    "Income","TotalSpending","TotalPurchases","AvgPurchaseValue",
+    "WineShare","GoldShare","WebRatio","KidsTotal","Age","Education_Ordinal"
+]
+
+campaign_cols = ["AcceptedCmp1","AcceptedCmp2","AcceptedCmp3","AcceptedCmp4","AcceptedCmp5","Response"]
+campaign_cols = [c for c in campaign_cols if c in df.columns]
+
+results = []
+
+for cmp in campaign_cols:
+    for feat in test_features:
+
+        grp1 = df[df[cmp] == 1][feat]
+        grp0 = df[df[cmp] == 0][feat]
+
+        if len(grp1) > 3:  # musí být aspoň pár respondentů
+            stat, p = mannwhitneyu(grp1, grp0, alternative='two-sided')
+
+            results.append({
+                "campaign": cmp,
+                "feature": feat,
+                "mean_responders": grp1.mean(),
+                "mean_nonresponders": grp0.mean(),
+                "difference": grp1.mean() - grp0.mean(),
+                "p_value": p
+            })
+
+results_df = pd.DataFrame(results)
+results_df["significant"] = results_df["p_value"] < 0.05
+
+print("\n===== SIGNIFICANT DIFFERENCES IN CAMPAIGNS =====")
+print(results_df[results_df["significant"] == True]
+      .sort_values(["campaign","p_value"])
+      .round(4))
+
+# Vizualizace: heatmap signifikantních rozdílů
+pivot = results_df.pivot_table(
+    index="feature",
+    columns="campaign",
+    values="p_value"
+)
+
+plt.figure(figsize=(10,6))
+sns.heatmap(-np.log10(pivot), annot=False, cmap="Reds", center=0)
+plt.title("Signifikance rozdílů mezi respondenty (-log10 p-value)")
+plt.show()
+
+
+
+
+
+
+
+
 # ----------------------------
 # 5) HDBSCAN clustering
+#nechá data vytvořit clustery samostatně.. lze misto toho pouzit k means ale museli bychom zadat pocet components
 # ----------------------------
 # doporučené parametry: min_cluster_size ~ 1–3% datasetu (u malých dat snížit)?????????????????????
 n = len(df)
@@ -132,7 +324,7 @@ unique, counts = np.unique(labels, return_counts=True)
 print("\nHDBSCAN cluster counts (label:-1 = noise):")
 print(dict(zip(unique, counts)))
 
-# optional silhouette (only non-noise)
+# optional silhouette
 mask = df["Cluster_hdb"] != -1
 if mask.sum() > 1:
     sil = silhouette_score(X_umap[mask.values], df.loc[mask, "Cluster_hdb"])
@@ -154,7 +346,7 @@ plt.show()
 print("\nCluster counts (including noise label -1):")
 print(df["Cluster_hdb"].value_counts().sort_index())
 
-# 6b) mediány a průměry pro interpretaci (použij median pro odpor vůči outlierům)
+# 6b) mediány
 profile_stats = df.groupby("Cluster_hdb")[profile_cols].median().round(2)
 print("\nMedian profiles by cluster:")
 print(profile_stats)
@@ -173,7 +365,7 @@ plt.show()
 # ----------------------------
 # 7) Statistické testy
 # ----------------------------
-# vybereme pár metrik, které chceme testovat
+# vybereme pár metrik, které chceme testovat ??????????????????????????????????????????????????????????????????
 test_vars = ["TotalSpending","TotalPurchases","AvgPurchaseValue","Income","WebRatio","WineShare"]
 
 print("\nKruskal-Wallis tests:")
@@ -242,29 +434,5 @@ for lab, row in campaign_summary.iterrows():
             print("  > doporučeno: cenové nabídky, slevy, bundly")
         else:
             print("  > doporučeno: remarketing + upsell")
-
-
-#CLUSTERING UVNITR CLUSTERU 0 (ten nejvetsi), at muzeme projit mainstream customers
-df0 = df[df["Cluster_hdb"] == 0].copy()
-
-# UMAP for finer segmentation
-umap_small = UMAP(n_components=2, random_state=42)
-X0_umap = umap_small.fit_transform(X_scaled[df["Cluster_hdb"] == 0])
-
-hdb_small = hdbscan.HDBSCAN(
-    min_cluster_size=20,
-    min_samples=10,
-    cluster_selection_epsilon=0.1
-)
-sub_labels = hdb_small.fit_predict(X0_umap)
-
-df0["Subcluster"] = sub_labels
-
-sns.scatterplot(
-    x=X0_umap[:,0], y=X0_umap[:,1],
-    hue=sub_labels, palette="Set2"
-)
-plt.title("Subclusters inside cluster 0")
-plt.show()
 
 
