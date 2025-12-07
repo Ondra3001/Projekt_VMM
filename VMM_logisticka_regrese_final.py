@@ -287,9 +287,9 @@ axes[1].set_xlabel('Úroveň spotreby')
 plt.tight_layout()
 plt.show()
 
-# ===================================================================
+
 # 9) PREDIKCIA PRE NOVÝCH ZÁKAZNÍKOV - PRÍKLAD
-# ===================================================================
+
 print("\n" + "=" * 60)
 print("9) PREDIKCIA PRE PRÍKLADOVÝCH ZÁKAZNÍKOV")
 print("=" * 60)
@@ -371,7 +371,7 @@ percent_in_not_low = len(not_low_edu_basic_2n) / total_basic_2n * 100
 
 print(f"\nZákladné vzdelanie (Basic/2n Cycle):")
 print(f"  {percent_in_low:.1f}% je v LOW spotrebe")
-print(f"  {percent_in_not_low:.1f}% je v NIE-LOW spotrebe")
+print(f"  {percent_in_not_low:.1f}% je v NON-LOW spotrebe")
 
 # Chi-kvadrát test pre kategorické dáta
 contingency_table = pd.crosstab(
