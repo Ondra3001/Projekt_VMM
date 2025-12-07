@@ -25,7 +25,7 @@ from statsmodels.stats.multicomp import pairwise_tukeyhsd
 from sklearn.metrics import silhouette_score
 
 # ----------------------------
-# 1) Načtení + predzpracovani
+# Načtení + predzpracovani
 # ----------------------------
 path = "customer_personality_Final.csv"
 df = pd.read_csv(path)
@@ -94,9 +94,9 @@ print("\nSilné korelace (|r|>0.5):")
 print(strong)
 
 # ----------------------------
-# 3) připrava vstupu pro embedding
+#  připrava vstupu pro embedding
 # ----------------------------
-# použijeme log transformu pro těžce zkreslené sloupce
+# log transformu pro těžce zkreslené sloupce
 log_cols = ["TotalFood","TotalLuxury","TotalSpending","TotalPurchases","AvgPurchaseValue","Income"]
 for c in log_cols:
     df[c+"_log"] = np.log1p(df[c])
@@ -122,24 +122,26 @@ plt.show()
 #struktura dat má relativně nízkou dimenzionalitu a většina informací je obsažena v několika hlavních faktorech.
 # PCA tedy vhodně komprimuje data a potvrzuje, že je možné použít metody jako UMAP nebo clustering bez výrazné ztráty informace.
 #--> data NEJSOU dobre  linearne separovatelna, PCA nepouzivame
-# ----------------------------
+
+# --------------------------------------------------------------------
 # UMAP
-# ----------------------------
+
 umap_model = UMAP(n_components=2, random_state=42, n_neighbors=30, min_dist=0.1)
 X_umap = umap_model.fit_transform(X_scaled)
 
 
 
-# ---------------------------------------------
+
 #  UMAP INTERPRETACE PODLE DEMOGRAFIE / CHOVÁNÍ.
-#k vizualizaci vybrany proměnné co se jeví jako dulezite pro odliseni
-# ---------------------------------------------
+#k vizualizaci vybrany proměnné co se jeví jako dulezite pro odliseni reakci
+
 
 interp_features = [
     "Income",
     "TotalSpending",
     "GoldShare",
     "WineShare",
+
     "KidsTotal",
     "Education_Ordinal"
 ]
@@ -177,13 +179,13 @@ plt.title("Korelace kampaní a zákaznických charakteristik")
 plt.show()
 
 
-# UMAP vizualizace kampaní v jednom obrázku
+# UMAP vizualizace kampaní v jednom plotu
 
 
 campaign_cols = ["AcceptedCmp1","AcceptedCmp2","AcceptedCmp3",
                  "AcceptedCmp4","AcceptedCmp5","Response"]
 
-# jen sloupce, které v DF existují
+
 campaign_cols = [c for c in campaign_cols if c in df.columns]
 
 fig, axes = plt.subplots(2, 3, figsize=(18, 10))
