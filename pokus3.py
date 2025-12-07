@@ -14,15 +14,12 @@ from sklearn.decomposition import PCA
 
 # embedding + clustering
 from umap import UMAP
-import hdbscan
 
-# statistika
-from scipy.stats import kruskal
-from itertools import combinations
-from statsmodels.stats.multicomp import pairwise_tukeyhsd
+#statistika
+from scipy.stats import mannwhitneyu
 
-# metriky
-from sklearn.metrics import silhouette_score
+
+
 
 # ----------------------------
 # Načtení + predzpracovani
@@ -221,7 +218,7 @@ plt.show()
 # STATISTICKÉ TESTY PRO KAMPANĚ
 # ==========================================
 
-from scipy.stats import mannwhitneyu
+
 
 # proměnné které budeme testovat
 test_features = [
