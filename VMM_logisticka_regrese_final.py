@@ -19,7 +19,6 @@ from sklearn.metrics import classification_report, accuracy_score, confusion_mat
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-
 # 1) Načtení a features
 
 path = "customer_personality_Final.csv"
@@ -34,7 +33,9 @@ df["Customer_since_years"] = (datetime.now() - df["Dt_Customer"]).dt.days / 365.
 df["Income"] = df["Income"].fillna(df["Income"].median())
 
 education_map = {"Basic": 1, "2n Cycle": 2, "Graduation": 3, "Master": 4, "PhD": 5}
-df["Education_Ordinal"] = df["Education"].map(education_map).fillna(0)
+df["Education_Ordinal"] = df["Education"].map(education_map)
+median_edu = df["Education_Ordinal"].median()
+df["Education_Ordinal"] = df["Education"].map(education_map).fillna(median_edu)
 df["Marital_Status"] = df["Marital_Status"].replace({"Alone": "Single"}).fillna("Unknown")
 
 # Cieľová premenná: 1 = Master/PhD, 0 = ostatné
@@ -57,9 +58,7 @@ df["IsFamily"] = (df["KidsTotal"] > 0).astype(int)
 print("Rows:", len(df))
 print("Columns (sample):", df.columns[:12].tolist())
 
-
 # 2) VYTVORENIE CIEĽOVEJ PREMENNEJ - ÚROVEŇ CONSUMPTION (3 KATEGÓRIE)
-
 
 
 # Celková spotreba
@@ -75,11 +74,11 @@ level_names = {0: 'Low', 1: 'Medium', 2: 'High'}
 df['Consumption_Level_Name'] = df['Consumption_Level'].map(level_names)
 
 # Štatistika rozdelenia
-#print("\nRozdelenie úrovní spotreby:")
-#level_counts = df['Consumption_Level_Name'].value_counts().sort_index()
-#print(level_counts)
-#print(f"\nPercentuálne rozdelenie:")
-#print((level_counts / len(df) * 100).round(1))
+# print("\nRozdelenie úrovní spotreby:")
+# level_counts = df['Consumption_Level_Name'].value_counts().sort_index()
+# print(level_counts)
+# print(f"\nPercentuálne rozdelenie:")
+# print((level_counts / len(df) * 100).round(1))
 
 # Deskriptívna štatistika spotreby podľa úrovne
 print("\n 2.)Štatistika celkovej spotreby podľa úrovne:")
@@ -88,12 +87,10 @@ consumption_stats = df.groupby('Consumption_Level_Name')['TotalConsumption'].agg
 ]).round(0)
 print(consumption_stats)
 
-
 # 3) PRÍPRAVA DAT PRE MODELOVANIE
 
 
 print("3) PRÍPRAVA DAT PRE MODELOVANIE")
-
 
 # Výber premenných
 feature_columns = [
@@ -118,12 +115,10 @@ X_train, X_test, y_train, y_test = train_test_split(
 print(f"Trénovacia sada: {X_train.shape[0]} vzoriek")
 print(f"Testovacia sada: {X_test.shape[0]} vzoriek")
 
-
 # 4) PREPROCESSING PIPELINE
 
 
 print("4) VYTVORENIE PREPROCESSING PIPELINE")
-
 
 # Identifikácia typov premenných
 categorical_cols = ['Marital_Status']
@@ -150,7 +145,6 @@ all_feature_names = num_features + cat_features
 
 print(f"\nCelkový počet features po transformácii: {len(all_feature_names)}")
 
-
 # 5) TRÉNOVANIE LOGISTICKEJ REGRESIE
 
 
@@ -173,12 +167,10 @@ model.fit(X_train, y_train)
 y_pred = model.predict(X_test)
 y_pred_proba = model.predict_proba(X_test)
 
-
 # 5) VYHODNOTENIE MODELU
 
 
 print("5.) VYHODNOTENIE MODELU")
-
 
 # Accuracy
 accuracy = accuracy_score(y_test, y_pred)
@@ -204,12 +196,10 @@ plt.xlabel('Predikovaná hodnota')
 plt.tight_layout()
 plt.show()
 
-
 # 7) INTERPRETÁCIA MODELU - KOEFICIENTY
 
 
 print("6) INTERPRETÁCIA - VPLYV PREMENNÝCH")
-
 
 # Získanie koeficientov
 coefficients = model.named_steps['classifier'].coef_
@@ -218,7 +208,6 @@ coefficients = model.named_steps['classifier'].coef_
 for i, level in enumerate(['Low', 'Medium', 'High']):
 
     print(f"CONSUMPTION : {level}")
-
 
     # Vytvorenie DF s koeficientmi
     coef_df = pd.DataFrame({
@@ -323,12 +312,10 @@ for i, (pred, probs) in enumerate(zip(predictions, probabilities)):
     print(f"  Predikovaná úroveň spotreby: {predicted_level}")
     print(f"  Pravdepodobnosti: Low={probs[0]:.2%}, Medium={probs[1]:.2%}, High={probs[2]:.2%}")
 
-
 # 10) ZÁVEREČNÁ ANALÝZA
 
 
 print("10) ZÁVEREČNÉ ZISTENIA")
-
 
 # Najdôležitejšie premenné celkovo (podľa priemernej absolútnej hodnoty)
 avg_importance = pd.DataFrame({
@@ -345,20 +332,23 @@ if not edu_importance.empty:
     rank = list(avg_importance['Feature']).index('Income') + 1
     print(f"\nPrijem je {rank}. najdôležitejšia premenná z {len(all_feature_names)}")
 
-
-
 # TEST : T-TEST - BASIC/2n CYCLE VZDĚLÁNÍ V LOW vs. OSTATNÍ
 
 alpha = 0.05
 
-print("TEST 2: VZDĚLÁNÍ BASIC/2n CYCLE V LOW SPOTŘEBĚ")
-
+print("TEST VZDĚLÁNÍ BASIC/2n CYCLE V LOW CONSUMPTION")
 
 # Vytvorenie skupín
 low_edu_basic_2n = df[(df['Consumption_Level_Name'] == 'Low') &
                       (df['Education'].isin(['Basic', '2n Cycle']))]
 not_low_edu_basic_2n = df[(df['Consumption_Level_Name'] != 'Low') &
                           (df['Education'].isin(['Basic', '2n Cycle']))]
+
+low_edu_MP = df[(df['Consumption_Level_Name'] == 'Low') &
+                      (df['Education'].isin(['Master', 'PhD']))]
+not_low_edu_MP = df[(df['Consumption_Level_Name'] != 'Low') &
+                          (df['Education'].isin(['Master', 'PhD']))]
+
 
 # Počty
 print(f"Počet Basic/2n Cycle v LOW spotrebe: {len(low_edu_basic_2n)}")
@@ -378,28 +368,55 @@ contingency_table = pd.crosstab(
     df['Education'].isin(['Basic', '2n Cycle']),
     df['Consumption_Level_Name'] == 'Low'
 )
+
+contingency_table2 = pd.crosstab(
+    df['Education'].isin(['Master', 'PhD']),
+    df['Consumption_Level_Name'] == 'Low'
+)
+
 chi2, p_chi, dof, expected = stats.chi2_contingency(contingency_table)
 
 print(f"\nCHI-KVADRÁT TEST:")
 print(f"  Chi-štatistika: {chi2:.3f}")
 print(f"  p-hodnota: {p_chi:.6f}")
 
+chi3, p_chi2, dof2, expected2 = stats.chi2_contingency(contingency_table2)
+
+print(f"\nCHI-KVADRÁT TEST:")
+print(f"  Chi-štatistika: {chi3:.3f}")
+print(f"  p-hodnota: {p_chi2:.6f}")
+
 # Porovnanie príjmu medzi Basic/2n Cycle v Low vs. non-Low
 if len(low_edu_basic_2n) > 1 and len(not_low_edu_basic_2n) > 1:
-    income_low = low_edu_basic_2n['Income']
-    income_not_low = not_low_edu_basic_2n['Income']
+    income_low = low_edu_basic_2n['TotalConsumption']
+    income_not_low = not_low_edu_basic_2n['TotalConsumption']
 
-    print(f"\nPRÍJEM BASIC/2n CYCLE:")
+    income_low_MP = low_edu_MP['TotalConsumption']
+    income_not_low_MP = not_low_edu_MP['TotalConsumption']
+
+    print(f"\nConsumption BASIC/2n CYCLE:")
     print(f"  V LOW spotrebe: priemer = {income_low.mean():.0f}, N = {len(income_low)}")
     print(f"  V NON-LOW spotrebe: priemer = {income_not_low.mean():.0f}, N = {len(income_not_low)}")
 
-    # T-test pre príjem
+    # T-test pre Consumption
     t_stat_edu, p_value_edu = stats.ttest_ind(income_low, income_not_low, equal_var=False)
-    print(f"\nT-TEST PRÍJEMU:")
+    print(f"\nT-TEST Consumption pro low edu:")
     print(f"  t-statistika: {t_stat_edu:.3f}")
     print(f"  p-hodnota: {p_value_edu:.6f}")
 
+    t_stat_edu_f, p_value_edu_f = stats.ttest_ind(income_low_MP, income_not_low_MP, equal_var=False)
+    print(f"\nCONSUMPTION HIGH edu:")
+    print(f"  V LOW spotrebe: priemer = {income_low_MP.mean():.0f}, N = {len(income_low_MP)}")
+    print(f"  V NON-LOW spotrebe: priemer = {income_not_low_MP.mean():.0f}, N = {len(income_not_low_MP)}")
+
+    print(f"\nT-TEST CONSUMPTION pro high edu:")
+    print(f"  t-statistika: {t_stat_edu_f:.3f}")
+    print(f"  p-hodnota: {p_value_edu_f:.6f}")
+
     if p_value_edu < alpha:
-        print(f"  ŠTATISTICKY VÝZNAMNÝ rozdiel v príjme")
+        print(f"  ŠTATISTICKY VÝZNAMNÝ rozdiel")
     else:
-        print(f"  NIE je štatisticky významný rozdiel v príjme")
+        print(f"  NIE je štatisticky významný rozdiel")
+
+
+
