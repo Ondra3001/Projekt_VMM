@@ -17,6 +17,9 @@ from umap import UMAP
 
 #statistika
 from scipy.stats import mannwhitneyu
+from scipy.stats import pearsonr, spearmanr
+
+
 
 
 
@@ -89,6 +92,81 @@ strong = corr.unstack().abs().sort_values(ascending=False).drop_duplicates()
 strong = strong[(strong < 1.0) & (strong > 0.5)]
 print("\nSilné korelace (|r|>0.5):")
 print(strong)
+
+# ==========================================
+# KORELACE Income × (WineShare, GoldShare)
+# ==========================================
+
+
+
+corr_features = ["WineShare", "GoldShare"]
+corr_results = []
+
+for feat in corr_features:
+    r_pear, p_pear = pearsonr(df["Income"], df[feat])
+    r_spear, p_spear = spearmanr(df["Income"], df[feat])
+
+    corr_results.append({
+        "feature": feat,
+        "pearson_r": r_pear,
+        "pearson_p": p_pear,
+        "spearman_r": r_spear,
+        "spearman_p": p_spear
+    })
+
+corr_df = pd.DataFrame(corr_results)
+print("\n===== Korelace Income × Wine/Gold =====")
+print(corr_df)
+
+# ------------------------------------------
+# Vylepšená vizualizace korelací
+# ------------------------------------------
+
+
+
+sns.set_style("whitegrid")
+
+plt.figure(figsize=(10, 6))
+
+# barvy: modrá = pozitivní, oranžová = negativní
+colors = ["#4C72B0" if r > 0 else "#DD8452" for r in corr_df["spearman_r"]]
+
+bars = plt.bar(
+    corr_df["feature"],
+    corr_df["spearman_r"],
+    color=colors,
+    edgecolor="black",
+    linewidth=1.4,
+    alpha=0.9
+)
+
+# čára v nule
+plt.axhline(0, color="black", linewidth=1)
+
+plt.ylabel("Spearman correlation (ρ)", fontsize=13, fontweight="bold")
+plt.title("Korelace Income vs. Luxury preference\nWineShare / GoldShare",
+          fontsize=15, fontweight="bold")
+
+# přidání p-hodnot — pěknější formát
+for i, row in corr_df.iterrows():
+    height = row["spearman_r"]
+    y = height + 0.04 if height > 0 else height - 0.08
+
+    plt.text(
+        i,
+        y,
+        f"p = {row['spearman_p']:.1e}",
+        ha='center',
+        fontsize=12,
+        fontweight="bold"
+    )
+
+# lepší limity
+plt.ylim(-0.65, 0.45)
+
+plt.tight_layout()
+plt.show()
+
 
 # ----------------------------
 #  připrava vstupu pro embedding
@@ -163,17 +241,10 @@ plt.show()
 
 plt.figure(figsize=(8,6))
 sns.scatterplot(x=X_umap[:,0], y=X_umap[:,1], s=30)
-plt.title("UMAP (unlabeled) — raw view")
+plt.title("UMAP - rozdělení prostoru (raw)")
 plt.show()
 
-response_corr = df[[
-    "AcceptedCmp1","AcceptedCmp2","AcceptedCmp3","AcceptedCmp4","AcceptedCmp5","Response",
-    "Income","TotalSpending","AvgPurchaseValue","WineShare","WebRatio","Age", "Education_Ordinal", "KidsTotal"
-]].corr()
 
-sns.heatmap(response_corr, annot=False, cmap="coolwarm", center=0)
-plt.title("Korelace kampaní a zákaznických charakteristik")
-plt.show()
 
 
 # UMAP vizualizace kampaní v jednom plotu
@@ -187,21 +258,35 @@ campaign_cols = [c for c in campaign_cols if c in df.columns]
 
 fig, axes = plt.subplots(2, 3, figsize=(18, 10))
 axes = axes.flatten()
+custom_palette = {0: "#377EB8", 1: "#E41A1C"}   #1:r
 
 for i, cmp in enumerate(campaign_cols):
     ax = axes[i]
+
+    # vykreslit 0 nejdříve
     sns.scatterplot(
-        x=X_umap[:,0],
-        y=X_umap[:,1],
-        hue=df[cmp],
-        palette="coolwarm",
+        x=X_umap[df[cmp] == 0, 0],
+        y=X_umap[df[cmp] == 0, 1],
+        color=custom_palette[0],
         s=35,
         ax=ax,
-        legend=False
+
     )
+
+    # vykreslit 1 navrch
+    sns.scatterplot(
+        x=X_umap[df[cmp] == 1, 0],
+        y=X_umap[df[cmp] == 1, 1],
+        color=custom_palette[1],
+        s=35,
+        ax=ax,
+
+    )
+
     ax.set_title(f"{cmp} (1 = accepted)")
     ax.set_xlabel("UMAP-1")
     ax.set_ylabel("UMAP-2")
+
 
 # případný prázdný subplot
 for j in range(len(campaign_cols), len(axes)):
